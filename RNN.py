@@ -69,6 +69,7 @@ class RNN:
 		self.a = a_temp
 		self.o = o_temp
 		self.p = p_temp
+		return self.prev_state
 
 	def cross_entropy(self, Y):
 		y_p = self.p[Y, np.arange(Y.size)]
@@ -76,6 +77,9 @@ class RNN:
 		return -np.log(y_p)
 
 	def backprop(self, input_sequence, output_sequence):
+
+		# call forward
+		self.forward(input_sequence)
 
 		# per il plot
 		Loss = sum(self.cross_entropy(output_sequence))
@@ -99,13 +103,45 @@ class RNN:
 		g_a[-1] = g_h[-1] @ (1-diag2fill**2)
 
 		for i in range(output_sequence-2, -1, -1):
+			# dL/dh_i
 			g_h[i] = g_o[i] @ self.V + g_a[i+1] @ self.W
+
+			# dL/da_i
 			np.fill_diagonal(diag2fill, self.h[i])
 			g_a[i] = g_h[i] @ (1-diag2fill**2)
 
+
 		h_shift = np.asarray([self.prev_state, g_h[:-1]])
-		self.grad_W = np.dot(g_a, h_shift.transpose())
-		self.grad_U = np.dot(g_a, input_sequence.transpose())
-		self.grad_b = np.sum(g_a, axis=1) #mean?
-		self.grad_c = np.sum(g_o, axis=1)  # mean?
-		self.grad_V = np.dot(g_o, self.o.transpose())
+		self.grad_W = np.dot(g_a, h_shift.transpose())         # dL/dW
+		self.grad_U = np.dot(g_a, input_sequence.transpose())  # dL/dU
+		self.grad_b = np.sum(g_a, axis=1) # mean?              # dL/db
+		self.grad_c = np.sum(g_o, axis=1) # mean?              # dL/dc
+		self.grad_V = np.dot(g_o, self.o.transpose())          # dL/dV
+
+		return Loss
+
+
+	def recall(self, sample_len = 200, *args):
+		if len(args)<2:
+			init_state = np.zeros(self.hidden_size)
+			if len(args)<1:
+				init_char = np.zeros(self.input_size)
+				init_char[np.random.randint(0,self.input_size)]=1
+
+		generated_sample = [init_char]
+		for i in range(sample_len):
+			out = self.evaluate(x=init_char, prev_state=init_state)
+			sample = np.random.choice(self.input_size, out['p'])
+			init_char = np.zeros(self.input_size)
+			init_char[sample] = 1
+			init_state = out['h']
+			generated_sample.append(init_char)
+
+		return generated_sample
+
+
+			
+
+
+
+
