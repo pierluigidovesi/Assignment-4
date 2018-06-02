@@ -1,7 +1,8 @@
 import numpy as np
 
+
 class RNN:
-	def __init__(self, input_size, output_size, hidden_size, seq_len):
+	def __init__(self, input_size, output_size, hidden_size):
 
 		# input
 		self.input_size = input_size
@@ -16,11 +17,11 @@ class RNN:
 		self.c = self.he_init(output_size)
 
 		# states
-		self.prev_state = np.empty(hidden_size)
-		self.h = np.zeros(seq_len, hidden_size)
-		self.a = np.empty_like(self.h)
-		self.o = np.empty(seq_len, output_size)
-		self.p = np.empty_like(self.o)
+		self.prev_state = None
+		self.h = np.zeros((200,hidden_size))
+		self.a = None
+		self.o = None
+		self.p = None
 
 		# grads
 		self.grad_U = np.empty_like(self.U)
@@ -29,9 +30,9 @@ class RNN:
 		self.grad_V = np.empty_like(self.V)
 		self.grad_c = np.empty_like(self.c)
 
-	def he_init(self, row, columns = None):
+	def he_init(self, row, columns=None):
 		try:
-			return np.random.normal(loc = 0.0, scale = 2/np.sqrt(columns), size = (row, columns))
+			return np.random.normal(loc=0.0, scale=2 / np.sqrt(columns), size=(row, columns))
 		except:
 			return np.zeros(row)
 
@@ -54,27 +55,29 @@ class RNN:
 		a_temp = []
 		o_temp = []
 		p_temp = []
-		self.prev_state = self.h[-1]
+		last_state = self.h[-1]
+		self.prev_state = last_state
 
-		last_state = self.prev_state
 		for char in input_sequence:
-			vars = self.evaluate(char, last_state)
-			last_state = vars['h']
-			h_temp.append(vars['h'])
-			a_temp.append(vars['a'])
-			o_temp.append(vars['o'])
-			p_temp.append(vars['p'])
+			evars = self.evaluate(char, last_state)
+			last_state = evars['h']
+			h_temp.append(evars['h'])
+			a_temp.append(evars['a'])
+			o_temp.append(evars['o'])
+			p_temp.append(evars['p'])
 
-		self.h = h_temp
-		self.a = a_temp
-		self.o = o_temp
-		self.p = p_temp
-		return self.prev_state
+		self.h = np.asarray(h_temp)
+		self.a = np.asarray(a_temp)
+		self.o = np.asarray(o_temp)
+		self.p = np.asarray(p_temp)
+
 
 	def cross_entropy(self, Y):
-		y_p = self.p[Y, np.arange(Y.size)]
+		#y_p = self.p[Y, np.arange(Y.size)]
+		y_p = np.multiply(self.p, Y)
+		# or alternatively: y_p = diag(dot(p,Y_t))
 		# select ascissa given by Y and scroll all p
-		return -np.log(y_p)
+		return -np.log(np.sum(y_p))
 
 	def backprop(self, input_sequence, output_sequence):
 
@@ -82,13 +85,13 @@ class RNN:
 		self.forward(input_sequence)
 
 		# per il plot
-		Loss = sum(self.cross_entropy(output_sequence))
+		Loss = self.cross_entropy(output_sequence)
 
 		# dL/dt
 		assert np.shape(self.p) == np.shape(output_sequence)
 
 		# init temp grads
-		g_h = np.zeros(np.shape(output_sequence))
+		g_h = np.zeros((output_sequence.shape[0], self.hidden_size))
 		g_a = np.zeros(np.shape(self.h))
 
 		# dL/do
@@ -98,35 +101,38 @@ class RNN:
 		g_h[-1] = g_o[-1] @ self.V
 
 		# dL/da_tau
-		diag2fill = np.zeros(g_h[-1].shape[0], g_h[-1].shape[0])
+		diag2fill = np.zeros((g_h[-1].shape[0], g_h[-1].shape[0]))
 		np.fill_diagonal(diag2fill, self.h[-1])
-		g_a[-1] = g_h[-1] @ (1-diag2fill**2)
+		g_a[-1] = g_h[-1] @ (1 - diag2fill ** 2)
 
-		for i in range(output_sequence-2, -1, -1):
+		for i in range(output_sequence.shape[0]-2, -1, -1):
 			# dL/dh_i
-			g_h[i] = g_o[i] @ self.V + g_a[i+1] @ self.W
+			g_h[i] = g_o[i] @ self.V + g_a[i + 1] @ self.W
 
 			# dL/da_i
 			np.fill_diagonal(diag2fill, self.h[i])
-			g_a[i] = g_h[i] @ (1-diag2fill**2)
-
-
-		h_shift = np.asarray([self.prev_state, g_h[:-1]])
-		self.grad_W = np.dot(g_a, h_shift.transpose())         # dL/dW
-		self.grad_U = np.dot(g_a, input_sequence.transpose())  # dL/dU
-		self.grad_b = np.sum(g_a, axis=1) # mean?              # dL/db
-		self.grad_c = np.sum(g_o, axis=1) # mean?              # dL/dc
-		self.grad_V = np.dot(g_o, self.o.transpose())          # dL/dV
+			g_a[i] = g_h[i] @ (1 - diag2fill ** 2)
+		print(self.prev_state.shape)
+		print(g_h[:-1].shape)
+		h_shift = np.concatenate((self.prev_state.reshape(1,-1), g_h[:-1]), axis = 0)
+		print(h_shift.shape)
+		print(g_a.shape)
+		self.grad_W = np.dot(g_a.transpose(), h_shift)          # dL/dW
+		print(self.grad_W.shape)
+		self.grad_U = np.dot(g_a.transpose(), input_sequence)   # dL/dU
+		print(self.grad_U.shape)
+		self.grad_b = np.sum(g_a, axis=1)  # mean?              # dL/db
+		self.grad_c = np.sum(g_o, axis=1)  # mean?              # dL/dc
+		self.grad_V = np.dot(g_o.transpose(), self.h)           # dL/dV
 
 		return Loss
 
-
-	def recall(self, sample_len = 200, *args):
-		if len(args)<2:
+	def recall(self, sample_len=200, *args):
+		if len(args) < 2:
 			init_state = np.zeros(self.hidden_size)
-			if len(args)<1:
+			if len(args) < 1:
 				init_char = np.zeros(self.input_size)
-				init_char[np.random.randint(0,self.input_size)]=1
+				init_char[np.random.randint(0, self.input_size)] = 1
 
 		generated_sample = [init_char]
 		for i in range(sample_len):
@@ -138,10 +144,3 @@ class RNN:
 			generated_sample.append(init_char)
 
 		return generated_sample
-
-
-			
-
-
-
-
