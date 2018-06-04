@@ -129,6 +129,17 @@ class RNN:
 		h = np.tanh(a)
 		o = self.V @ h + self.c
 
+		self.hh = h
+		self.VV = self.V
+		self.VVhh = self.V @ h
+
+		self.log_Vh.append(self.log_Vh[-1] * 0.999 + np.max(np.abs(self.V @ h)) * 0.001)
+		self.log_V.append(self.log_V[-1] * 0.999 + np.max(np.abs(self.V)) * 0.001)
+		self.log_h.append(self.log_h[-1] * 0.999 + np.max(np.abs(h)) * 0.001)
+		self.log_c.append(self.log_c[-1] * 0.999 + np.max(np.abs(self.c)) * 0.001)
+		self.log_o.append(self.log_o[-1] * 0.999 + np.max(np.abs(o)) * 0.001)
+
+		"""
 		if np.max(np.abs(self.V @ h)) > self.log_Vh[-1]:
 			self.log_Vh.append(np.max(np.abs(self.V @ h)))
 		else:
@@ -153,7 +164,7 @@ class RNN:
 			self.log_o.append(np.max(np.abs(o)))
 		else:
 			self.log_o.append(self.log_o[-1])
-
+		"""
 		softmax = lambda x: np.exp(x) / np.sum(np.exp(x))
 		p = self._softmax(o)
 		return {
@@ -163,7 +174,7 @@ class RNN:
 			'p': p,
 		}
 
-	def forward(self, input_sequence, debug=False, debug_state = None):
+	def forward(self, input_sequence, debug=False, debug_state=None):
 
 		h_temp = []
 		a_temp = []
@@ -194,7 +205,6 @@ class RNN:
 		# or alternatively: y_p = diag(dot(p,Y_t))
 		# select ascissa given by Y and scroll all p
 		return -np.sum(np.log(np.sum(y_p, axis=1)))
-		#return self.cost(Y)
 
 	def cost(self, targets):
 		assert self.p.shape == targets.shape
@@ -204,7 +214,7 @@ class RNN:
 
 	def _softmax(self, o):
 		try:
-			e = np.exp(o)
+			e = np.exp(o - np.max(o))
 			res = e / e.sum()
 		except:
 			res = np.full_like(o, fill_value=np.finfo(float).eps)
@@ -361,19 +371,29 @@ class RNN:
 					print('###########################################################################################')
 					print('epoch: ', epoch, ' - e_index: ', e, '- elapsed time: ', partial_time)
 					generated_sample.append(self.recall(sample_len))
-					"""
 					print(self.text_source.decode_to_strings(generated_sample[-1]))
 					plt.plot(loss_history)
 					plt.show()
+
 					"""
 					plt.plot(self.log_o, label='o')
 					plt.plot(self.log_V, label='V')
 					plt.plot(self.log_c, label='c')
 					plt.plot(self.log_h, label='h')
 					plt.plot(self.log_Vh, label='Vh')
-					#plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 					plt.legend()
 					plt.show()
+
+					"""
+					"""
+					print('VV')
+					print(self.VV)
+					print('hh')
+					print(self.hh)
+					print('VVhh')
+					print(self.VVhh)
+					print(np.argmax(np.abs(self.VVhh)))
+					"""
 			self.h = np.zeros((1, self.hidden_size))
 
 		generated_sample.append(self.recall(sample_len*100))
