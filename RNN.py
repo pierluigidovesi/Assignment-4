@@ -82,7 +82,7 @@ class TextSource:
 
 
 class RNN:
-	def __init__(self, text_source, hidden_size = 100):
+	def __init__(self, text_source, hidden_size = 150):
 
 		# input
 		self.input_size = text_source.label_encoder.classes_.shape[0]
@@ -128,6 +128,32 @@ class RNN:
 		a = self.U @ x + self.W @ prev_state + self.b
 		h = np.tanh(a)
 		o = self.V @ h + self.c
+
+		if np.max(np.abs(self.V @ h)) > self.log_Vh[-1]:
+			self.log_Vh.append(np.max(np.abs(self.V @ h)))
+		else:
+			self.log_Vh.append(self.log_Vh[-1])
+
+		if np.max(np.abs(self.V)) > self.log_V[-1]:
+			self.log_V.append(np.max(np.abs(self.V)))
+		else:
+			self.log_V.append(self.log_V[-1])
+
+		if np.max(np.abs(self.c)) > self.log_c[-1]:
+			self.log_c.append(np.max(np.abs(self.c)))
+		else:
+			self.log_c.append(self.log_c[-1])
+
+		if np.max(np.abs(h)) > self.log_h[-1]:
+			self.log_h.append(np.max(np.abs(h)))
+		else:
+			self.log_h.append(self.log_h[-1])
+
+		if np.max(np.abs(o)) > self.log_o[-1]:
+			self.log_o.append(np.max(np.abs(o)))
+		else:
+			self.log_o.append(self.log_o[-1])
+
 		softmax = lambda x: np.exp(x) / np.sum(np.exp(x))
 		p = self._softmax(o)
 		return {
@@ -184,8 +210,6 @@ class RNN:
 			res = np.full_like(o, fill_value=np.finfo(float).eps)
 			res[np.argmax(o)] = 1 - (self.output_size - 1) * np.finfo(float).eps
 		return res
-
-
 
 	def backprop(self, input_sequence, output_sequence):
 
@@ -312,10 +336,14 @@ class RNN:
 		self.W -= self.delta_W
 		self.c -= self.delta_c
 
-	def fit(self, n_epochs=100, seq_len=25, eta=0.01, gamma=0.9, sample_len=1000):
+	def fit(self, n_epochs=100, seq_len=25, eta=0.001, gamma=0.9, sample_len=1000):
+		self.log_o = [0]
+		self.log_V = [0]
+		self.log_c = [0]
+		self.log_h = [0]
+		self.log_Vh = [0]
 		input_data = self.text_source.encoded_text
 		generated_sample = []
-		loss_history = [0]
 		init_time = time.time()
 		for epoch in range(n_epochs):
 			for e in range(np.shape(input_data)[0] - seq_len):
@@ -323,31 +351,35 @@ class RNN:
 				output_sequence = input_data[e + 1:e + seq_len + 1]
 				self.forward(input_sequence)
 				new_loss = self.backprop(input_sequence, output_sequence)
-				loss_history.append(loss_history[-1]*0.999 + new_loss*0.001)
+				if e == 0:
+					loss_history = [new_loss]
+				else:
+					loss_history.append(loss_history[-1]*0.999 + new_loss*0.001)
 				self.RMSProp(eta, gamma)
 				if e % 1000 == 0:
 					partial_time = time.time() - init_time
 					print('###########################################################################################')
 					print('epoch: ', epoch, ' - e_index: ', e, '- elapsed time: ', partial_time)
-					"""
-					print(self.text_source.decode_to_strings(input_sequence))
-					print(self.text_source.decode_to_strings(output_sequence))
-					"""
-
-					"""
-					print('updates:')
-					print(self.U)
-					print(self.V)
-					print(self.b)
-					print(self.W)
-					print(self.c)
-					"""
-
 					generated_sample.append(self.recall(sample_len))
+					"""
 					print(self.text_source.decode_to_strings(generated_sample[-1]))
 					plt.plot(loss_history)
 					plt.show()
+					"""
+					plt.plot(self.log_o, label='o')
+					plt.plot(self.log_V, label='V')
+					plt.plot(self.log_c, label='c')
+					plt.plot(self.log_h, label='h')
+					plt.plot(self.log_Vh, label='Vh')
+					#plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+					plt.legend()
+					plt.show()
 			self.h = np.zeros((1, self.hidden_size))
+
+		generated_sample.append(self.recall(sample_len*100))
+		print(self.text_source.decode_to_strings(generated_sample[-1]))
+		plt.plot(loss_history)
+		plt.show()
 		return {
 			'history': loss_history,
 			'samples': generated_sample,
