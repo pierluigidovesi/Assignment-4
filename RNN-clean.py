@@ -5,55 +5,7 @@ import matplotlib.pyplot as plt
 import unittest
 
 
-#########################################################################################
-
-
 import numpy as np
-
-def compute_grads_for_matrix(inputs, targets, initial_state, matrix,
-                             network, name):
-    # Initialize an empty matrix to contain the gradients
-    matrix = np.atleast_2d(matrix)
-    grad = np.empty_like(matrix)
-    h = 1e-4
-    # Iterate over the matrix changing one entry at the time
-    print('Gradient computations for {} {}, sequence length {}'
-          .format(name, matrix.shape, inputs.shape[0]))
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            matrix[i, j] += h
-            network.forward(inputs, debug=True, debug_state=initial_state)
-            plus_cost = network.cross_entropy(targets)
-            matrix[i, j] -= 2 * h
-            network.forward(inputs, debug=True, debug_state=initial_state)
-            minus_cost = network.cross_entropy(targets)
-            grad[i, j] = (plus_cost - minus_cost) / (2 * h)
-            matrix[i, j] += h
-    return np.squeeze(grad)
-
-def print_grad_diff(grad, grad_num, name=''):
-    err = np.abs(grad - grad_num)
-    rel_err = err / np.maximum(np.finfo('float').eps,
-                               np.abs(grad) + np.abs(grad_num))
-    print('Gradient difference {}: {:.2e}'.format(name, np.max(rel_err)))
-
-
-def test_gradients(input_sequence, output_sequence, network):
-    network.forward(input_sequence, debug=True, debug_state=np.zeros(network.hidden_size))
-    network.backprop(input_sequence, output_sequence)
-    for (param, grad, name) in network.get_weights_gradients():
-        grad_num = compute_grads_for_matrix(
-            input_sequence, output_sequence, np.zeros(network.hidden_size),
-            param, network, name)
-        print_grad_diff(grad=grad, grad_num=grad_num, name=name)
-
-
-if __name__ == '__main__':
-    unittest.main()
-######################################################################################
-
-
-
 
 class TextSource:
 	def __init__(self, filename):
@@ -78,8 +30,6 @@ class TextSource:
 	def load_text(filename):
 		with open(filename, 'r') as f:
 			return f.read()
-
-
 
 class RNN:
 	def __init__(self, text_source, hidden_size = 150):
@@ -209,12 +159,6 @@ class RNN:
 		# select ascissa given by Y and scroll all p
 		return -np.sum(np.log(np.sum(y_p, axis=1)))
 
-	def cost(self, targets):
-		assert self.p.shape == targets.shape
-		log_arg = (self.p * targets).sum(axis=1)
-		log_arg[log_arg == 0] = np.finfo(float).eps
-		return - np.log(log_arg).sum()
-
 	def _softmax(self, o):
 		try:
 			e = np.exp(o - np.max(o))
@@ -264,38 +208,6 @@ class RNN:
 		self.grad_c = np.sum(g_o, axis=0)  # mean?             # dL/dc
 		self.grad_V = np.dot(g_o.transpose(), self.h)  # dL/dV
 
-		######################### BALDAPART  #########################
-
-		balda_grad_W = np.zeros_like(self.W)
-		balda_grad_U = np.zeros_like(self.U)
-		balda_grad_b = np.zeros_like(self.b)
-		grad_V_balda = np.zeros_like(self.V)
-		for t in range(output_sequence.shape[0]):
-			grad_V_balda += np.outer(g_o[t], self.h[t])
-		# print("DIFFERENZA VBALDA-VNOSTRO")
-		# print(np.sum(np.abs(self.grad_V-grad_V_balda)))
-
-		dL_da = np.zeros(self.hidden_size)
-		for t in range(output_sequence.shape[0] - 1, 0 - 1, -1):
-			dL_dh = g_o[t] @ self.V + dL_da @ self.W
-			dL_da = dL_dh * (1 - self.h[t]**2)
-			balda_grad_W += np.outer(dL_da, h_shift[t])
-			balda_grad_U += np.outer(dL_da, input_sequence[t])
-			balda_grad_b += dL_da
-
-		"""
-		print("DIFFERENZA W_BALDA-W_NOSTRO")
-		print(np.sum(np.abs(self.grad_W-balda_grad_W)))
-		print("DIFFERENZA U_BALDA-U_NOSTRO")
-		print(np.sum(np.abs(self.grad_U-balda_grad_U)))
-		print("DIFFERENZA b_BALDA-b_NOSTRO")
-		print(np.sum(np.abs(self.grad_b-balda_grad_b)))
-		"""
-		"""
-		self.grad_V = grad_V_balda
-		self.grad_W = balda_grad_W
-		self.grad_U = balda_grad_U
-		"""
 		return loss
 
 	def recall(self, sample_len=200, *args):
